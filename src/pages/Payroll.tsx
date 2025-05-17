@@ -28,8 +28,9 @@ import {
   Filter,
   Calendar,
   Users,
-  Clock
+  RefreshCcw
 } from "lucide-react";
+import { Skeleton } from "@/components/ui/skeleton";
 
 const PayslipDetails = ({ payroll }: { payroll: PayrollItem }) => {
   const monthNames = [
@@ -289,11 +290,53 @@ const PayrollPage = () => {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-[60vh]">
-        <div className="text-center">
-          <Clock className="animate-spin h-10 w-10 text-hrms-primary mx-auto mb-4" />
-          <p className="text-xl font-medium">Loading payroll data...</p>
+      <div className="space-y-6">
+        <div className="flex justify-between items-center mb-4">
+          <div>
+            <h1 className="text-2xl font-bold">Payroll</h1>
+            <p className="text-gray-500">Loading your payroll data...</p>
+          </div>
         </div>
+        
+        <Card>
+          <CardHeader>
+            <CardTitle>Salary Statements</CardTitle>
+            <CardDescription>Loading your salary statements...</CardDescription>
+          </CardHeader>
+          <CardContent className="min-h-[300px] relative">
+            <div className="flex flex-col items-center justify-center space-y-4 py-10">
+              <div className="relative">
+                <RefreshCcw className="animate-spin h-12 w-12 text-hrms-primary" />
+                <div className="absolute top-0 left-0 w-full h-full flex items-center justify-center">
+                  <div className="h-3 w-3 rounded-full bg-hrms-primary animate-pulse"></div>
+                </div>
+              </div>
+              <p className="text-lg font-medium text-gray-700">Loading payroll data...</p>
+              <p className="text-gray-500 max-w-md text-center">
+                We're retrieving your salary information. This will only take a moment.
+              </p>
+              <div className="grid grid-cols-3 gap-3 w-full max-w-md mt-4">
+                <Skeleton className="h-8 w-full" />
+                <Skeleton className="h-8 w-full" />
+                <Skeleton className="h-8 w-full" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        
+        <Card>
+          <CardHeader>
+            <CardTitle>Yearly Summary</CardTitle>
+            <CardDescription>Loading financial summary...</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+              {[1, 2, 3, 4].map((i) => (
+                <Skeleton key={i} className="h-24 w-full" />
+              ))}
+            </div>
+          </CardContent>
+        </Card>
       </div>
     );
   }
