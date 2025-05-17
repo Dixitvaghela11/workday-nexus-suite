@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { mockEmployeeProfiles, mockLeaves, mockLeaveBalances } from "@/services/mockData";
@@ -371,9 +372,23 @@ const LeavePage = () => {
     return employee ? employee.personalInfo.firstName + " " + employee.personalInfo.lastName : "Unknown";
   };
   
-  // Filter leave applications based on selected employee for admin/HR
-  const filteredLeaveApplications = user?.role === UserRole.Employee ? leaveApplications : 
-    selectedEmployeeId ? leaveApplications.filter(leave => leave.employeeId === selectedEmployeeId) : leaveApplications;
+  // Fix the type comparison issue here - avoid direct role type comparisons
+  const filteredLeaveApplications = (() => {
+    if (!user) return leaveApplications;
+    
+    // For employees, show only their leave applications
+    if (user.role === UserRole.Employee) {
+      return leaveApplications;
+    }
+    
+    // For admin/HR with a selected employee, filter by that employee
+    if (selectedEmployeeId) {
+      return leaveApplications.filter(leave => leave.employeeId === selectedEmployeeId);
+    }
+    
+    // For admin/HR without a selected employee, show all
+    return leaveApplications;
+  })();
 
   if (loading) {
     return (
