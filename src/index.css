@@ -1,3 +1,4 @@
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -13,10 +14,10 @@
     --popover: 0 0% 100%;
     --popover-foreground: 222.2 84% 4.9%;
 
-    --primary: 222.2 47.4% 11.2%;
+    --primary: 194 76% 40%;
     --primary-foreground: 210 40% 98%;
 
-    --secondary: 210 40% 96.1%;
+    --secondary: 160 84% 39%;
     --secondary-foreground: 222.2 47.4% 11.2%;
 
     --muted: 210 40% 96.1%;
@@ -34,20 +35,13 @@
 
     --radius: 0.5rem;
 
-    --sidebar-background: 0 0% 98%;
-
-    --sidebar-foreground: 240 5.3% 26.1%;
-
-    --sidebar-primary: 240 5.9% 10%;
-
-    --sidebar-primary-foreground: 0 0% 98%;
-
-    --sidebar-accent: 240 4.8% 95.9%;
-
-    --sidebar-accent-foreground: 240 5.9% 10%;
-
-    --sidebar-border: 220 13% 91%;
-
+    --sidebar-background: 194 76% 40%;
+    --sidebar-foreground: 0 0% 100%;
+    --sidebar-primary: 194 80% 30%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 194 76% 45%;
+    --sidebar-accent-foreground: 0 0% 100%;
+    --sidebar-border: 194 76% 35%;
     --sidebar-ring: 217.2 91.2% 59.8%;
   }
 
@@ -61,7 +55,7 @@
     --popover: 222.2 84% 4.9%;
     --popover-foreground: 210 40% 98%;
 
-    --primary: 210 40% 98%;
+    --primary: 194 76% 40%;
     --primary-foreground: 222.2 47.4% 11.2%;
 
     --secondary: 217.2 32.6% 17.5%;
@@ -79,13 +73,14 @@
     --border: 217.2 32.6% 17.5%;
     --input: 217.2 32.6% 17.5%;
     --ring: 212.7 26.8% 83.9%;
-    --sidebar-background: 240 5.9% 10%;
-    --sidebar-foreground: 240 4.8% 95.9%;
-    --sidebar-primary: 224.3 76.3% 48%;
+    
+    --sidebar-background: 194 76% 30%;
+    --sidebar-foreground: 0 0% 100%;
+    --sidebar-primary: 194 80% 40%;
     --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 240 3.7% 15.9%;
-    --sidebar-accent-foreground: 240 4.8% 95.9%;
-    --sidebar-border: 240 3.7% 15.9%;
+    --sidebar-accent: 194 76% 25%;
+    --sidebar-accent-foreground: 0 0% 100%;
+    --sidebar-border: 194 76% 20%;
     --sidebar-ring: 217.2 91.2% 59.8%;
   }
 }
@@ -97,5 +92,59 @@
 
   body {
     @apply bg-background text-foreground;
+  }
+}
+
+@layer components {
+  .hrms-card {
+    @apply rounded-lg border p-4 shadow-sm bg-white dark:bg-gray-800;
+  }
+
+  .hrms-section-title {
+    @apply text-xl font-semibold text-hrms-primary mb-4;
+  }
+
+  .hrms-btn-primary {
+    @apply bg-hrms-primary hover:bg-hrms-primary/90 text-white font-medium py-2 px-4 rounded-md transition-colors;
+  }
+
+  .hrms-btn-secondary {
+    @apply bg-hrms-secondary hover:bg-hrms-secondary/90 text-white font-medium py-2 px-4 rounded-md transition-colors;
+  }
+
+  .hrms-btn-danger {
+    @apply bg-hrms-danger hover:bg-hrms-danger/90 text-white font-medium py-2 px-4 rounded-md transition-colors;
+  }
+
+  .hrms-btn-outline {
+    @apply border border-hrms-primary text-hrms-primary hover:bg-hrms-primary/10 font-medium py-2 px-4 rounded-md transition-colors;
+  }
+
+  .hrms-input {
+    @apply border border-gray-300 rounded-md px-3 py-2 w-full focus:outline-none focus:ring-2 focus:ring-hrms-primary/50;
+  }
+  
+  .hrms-label {
+    @apply text-sm font-medium text-gray-700 dark:text-gray-300 mb-1;
+  }
+  
+  .hrms-form-group {
+    @apply mb-4;
+  }
+  
+  .hrms-status-pending {
+    @apply bg-yellow-100 text-yellow-800 px-2 py-1 rounded-full text-xs font-semibold;
+  }
+  
+  .hrms-status-approved {
+    @apply bg-green-100 text-green-800 px-2 py-1 rounded-full text-xs font-semibold;
+  }
+  
+  .hrms-status-rejected {
+    @apply bg-red-100 text-red-800 px-2 py-1 rounded-full text-xs font-semibold;
+  }
+
+  .hrms-avatar {
+    @apply h-10 w-10 rounded-full bg-hrms-primary/20 flex items-center justify-center text-hrms-primary font-semibold;
   }
 }
