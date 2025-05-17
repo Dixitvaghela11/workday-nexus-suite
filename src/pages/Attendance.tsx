@@ -1,7 +1,8 @@
+
 import { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
-import { mockAttendanceData, mockEmployeeProfiles } from "@/services/mockData";
-import { AttendanceRecord, EmployeeProfile, UserRole } from "@/types";
+import { mockAttendance, mockEmployeeProfiles } from "@/services/mockData";
+import { Attendance, EmployeeProfile, UserRole, AttendanceStatus } from "@/types";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -38,6 +39,22 @@ import {
 import { useToast } from "@/components/ui/use-toast";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns"
+
+// Define an interface for the AttendanceRecord that matches what we're using in the component
+interface AttendanceRecord {
+  id: string;
+  employeeId: string;
+  employee: {
+    firstName: string;
+    lastName: string;
+  };
+  date: string;
+  status: string;
+  clockInTime?: string;
+  clockOutTime?: string;
+  totalHours?: string | null;
+  notes?: string;
+}
 
 const AttendanceDetailsView = ({ record }: { record: AttendanceRecord }) => {
   return (
@@ -112,7 +129,10 @@ const AddAttendanceDialog = ({ open, setOpen, onAdd }: {
     const newRecord: AttendanceRecord = {
       id: `temp-${Date.now()}`,
       employeeId: employeeId,
-      employee: employee!,
+      employee: {
+        firstName: employee?.personalInfo?.firstName || "",
+        lastName: employee?.personalInfo?.lastName || ""
+      },
       date: date.toISOString(),
       status: status,
       clockInTime: clockInTime,
@@ -295,11 +315,27 @@ const EmployeesAttendancePage = () => {
         setAllEmployees(mockEmployeeProfiles);
       }
       
-      // Set attendance data
-      const initialData = mockAttendanceData.map(record => ({
-        ...record,
-        employee: mockEmployeeProfiles.find(emp => emp.employeeId === record.employeeId)!,
-      }));
+      // Convert mockAttendance to AttendanceRecord format
+      const initialData = mockAttendance.map(record => {
+        // Find the employee profile to get first and last name
+        const employee = mockEmployeeProfiles.find(emp => emp.employeeId === record.employeeId);
+        
+        return {
+          id: record.id,
+          employeeId: record.employeeId,
+          employee: {
+            firstName: employee?.personalInfo.firstName || "",
+            lastName: employee?.personalInfo.lastName || ""
+          },
+          date: record.date.toString(),
+          status: record.status,
+          clockInTime: record.punchInTime ? new Date(record.punchInTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : undefined,
+          clockOutTime: record.punchOutTime ? new Date(record.punchOutTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : undefined,
+          totalHours: record.workHours ? record.workHours.toString() : null,
+          notes: record.comments
+        };
+      });
+      
       setAttendanceData(initialData);
       setFilteredAttendanceData(initialData);
       setLoading(false);
