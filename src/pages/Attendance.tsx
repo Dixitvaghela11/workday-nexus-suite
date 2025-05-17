@@ -193,13 +193,13 @@ const CalendarDay = ({
               </div>
               <div className="text-xs text-center mt-1">
                 {attendance.status === AttendanceStatus.Present && attendance.punchInTime && (
-                  <span className="block">{formatTime(attendance.punchInTime)}</span>
+                  <span className="block">{formatTime(attendance.punchInTime.toString())}</span>
                 )}
                 {attendance.status === AttendanceStatus.Present && attendance.punchOutTime && (
-                  <span className="block">{formatTime(attendance.punchOutTime)}</span>
+                  <span className="block">{formatTime(attendance.punchOutTime.toString())}</span>
                 )}
                 {attendance.status === AttendanceStatus.HalfDay && attendance.punchInTime && (
-                  <span className="block">{formatTime(attendance.punchInTime)}</span>
+                  <span className="block">{formatTime(attendance.punchInTime.toString())}</span>
                 )}
                 {attendance.status === AttendanceStatus.WorkFromHome && (
                   <span className="block">WFH</span>
@@ -246,12 +246,14 @@ const AttendancePage = () => {
         
         // Check if clocked in today
         const today = new Date().toISOString().split('T')[0];
-        const todayRecord = records.find(record => record.date === today && 
-          record.punchInTime && !record.punchOutTime);
+        const todayRecord = records.find(record => {
+          const recordDate = typeof record.date === 'string' ? record.date : record.date.toISOString().split('T')[0];
+          return recordDate === today && record.punchInTime && !record.punchOutTime;
+        });
         
         if (todayRecord && todayRecord.punchInTime) {
           setClockedIn(true);
-          setClockInTime(todayRecord.punchInTime);
+          setClockInTime(todayRecord.punchInTime.toString());
         }
       }
     }
@@ -271,7 +273,7 @@ const AttendancePage = () => {
     
     // Filter by month and year
     filtered = filtered.filter((record) => {
-      const recordDate = new Date(record.date);
+      const recordDate = new Date(typeof record.date === 'string' ? record.date : record.date.toISOString());
       return (
         recordDate.getMonth() + 1 === selectedMonth &&
         recordDate.getFullYear() === selectedYear
@@ -287,9 +289,12 @@ const AttendancePage = () => {
     
     // Filter by date if search date is provided
     if (searchDate) {
-      filtered = filtered.filter(
-        (record) => record.date.includes(searchDate)
-      );
+      filtered = filtered.filter((record) => {
+        const recordDateStr = typeof record.date === 'string' ? 
+          record.date : 
+          record.date.toISOString().split('T')[0];
+        return recordDateStr.includes(searchDate);
+      });
     }
     
     setFilteredRecords(filtered);
@@ -320,7 +325,10 @@ const AttendancePage = () => {
     const today = now.toISOString().split('T')[0];
     
     // Check if already has a record for today
-    const existingRecord = attendanceRecords.find(record => record.date === today);
+    const existingRecord = attendanceRecords.find(record => {
+      const recordDate = typeof record.date === 'string' ? record.date : record.date.toISOString().split('T')[0];
+      return recordDate === today;
+    });
     
     if (existingRecord) {
       toast({
@@ -356,7 +364,9 @@ const AttendancePage = () => {
     
     // Find today's record
     const updatedRecords = attendanceRecords.map(record => {
-      if (record.date === today && record.punchInTime) {
+      const recordDate = typeof record.date === 'string' ? record.date : record.date.toISOString().split('T')[0];
+      
+      if (recordDate === today && record.punchInTime) {
         const punchInTime = new Date(record.punchInTime);
         const timeDiff = now.getTime() - punchInTime.getTime();
         const hours = Math.round(timeDiff / (1000 * 60 * 60) * 10) / 10;
@@ -383,7 +393,10 @@ const AttendancePage = () => {
     if (date === 0) return null;
     
     const dateStr = `${selectedYear}-${String(selectedMonth).padStart(2, '0')}-${String(date).padStart(2, '0')}`;
-    return filteredRecords.find(record => record.date === dateStr) || null;
+    return filteredRecords.find(record => {
+      const recordDate = typeof record.date === 'string' ? record.date : record.date.toISOString().split('T')[0];
+      return recordDate === dateStr;
+    }) || null;
   };
 
   if (!profile) {
@@ -567,16 +580,16 @@ const AttendancePage = () => {
                   filteredRecords.map((record) => (
                     <TableRow key={record.id}>
                       <TableCell>
-                        {new Date(record.date).toLocaleDateString()}
+                        {new Date(typeof record.date === 'string' ? record.date : record.date.toISOString()).toLocaleDateString()}
                       </TableCell>
                       <TableCell>
                         <StatusBadge status={record.status} />
                       </TableCell>
                       <TableCell>
-                        {record.punchInTime ? formatTime(record.punchInTime) : "N/A"}
+                        {record.punchInTime ? formatTime(record.punchInTime.toString()) : "N/A"}
                       </TableCell>
                       <TableCell>
-                        {record.punchOutTime ? formatTime(record.punchOutTime) : "N/A"}
+                        {record.punchOutTime ? formatTime(record.punchOutTime.toString()) : "N/A"}
                       </TableCell>
                       <TableCell>
                         {record.workHours !== undefined ? `${record.workHours} hrs` : "N/A"}
