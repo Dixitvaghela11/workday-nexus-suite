@@ -1,24 +1,16 @@
-
 import { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
-import { mockEmployeeProfiles, mockAttendance } from "@/services/mockData";
-import { EmployeeProfile, Attendance as AttendanceType, AttendanceStatus, UserRole } from "@/types";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { mockAttendanceData, mockEmployeeProfiles } from "@/services/mockData";
+import { AttendanceRecord, EmployeeProfile, UserRole } from "@/types";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { 
   Table, TableBody, TableCell, TableHead, 
   TableHeader, TableRow 
 } from "@/components/ui/table";
-import { Badge } from "@/components/ui/badge";
-import {
-  ChevronLeft,
-  ChevronRight,
-  Clock,
-  Calendar,
-  Search
-} from "lucide-react";
-import { useToast } from "@/components/ui/use-toast";
-import { Input } from "@/components/ui/input";
+import { Calendar } from "@/components/ui/calendar"
 import {
   Select,
   SelectContent,
@@ -26,213 +18,272 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import { 
+  Users, Search, Filter, UserPlus, Check, ArrowUpDown, 
+  Eye, UserCog, FileText, Mail, Clock, X
+} from "lucide-react";
+import { useToast } from "@/components/ui/use-toast";
+import { cn } from "@/lib/utils";
+import { format } from "date-fns"
 
-// Function to get the name of the month
-const getMonthName = (month: number): string => {
-  return new Date(0, month - 1).toLocaleDateString('default', { month: 'long' });
-};
-
-// Format time from ISO string to readable format
-const formatTime = (timeString: string | undefined): string => {
-  if (!timeString) return "N/A";
-  
-  try {
-    const date = new Date(timeString);
-    return date.toLocaleTimeString('en-US', {
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: true
-    });
-  } catch (error) {
-    return "Invalid time";
-  }
-};
-
-// Generate calendar weeks
-const generateCalendar = (year: number, month: number) => {
-  const firstDay = new Date(year, month - 1, 1).getDay(); // 0 is Sunday
-  const daysInMonth = new Date(year, month, 0).getDate();
-  
-  const calendar = [];
-  let week: { date: number; day: string; }[] = [];
-  
-  // Fill in empty cells for the days before the first of the month
-  for (let i = 0; i < firstDay; i++) {
-    week.push({ date: 0, day: "" });
-  }
-  
-  // Fill in the days of the month
-  for (let i = 1; i <= daysInMonth; i++) {
-    const date = new Date(year, month - 1, i);
-    week.push({
-      date: i,
-      day: date.toLocaleDateString('en-US', { weekday: 'short' })
-    });
-    
-    if (week.length === 7) {
-      calendar.push(week);
-      week = [];
-    }
-  }
-  
-  // Fill in empty cells for the days after the end of the month
-  if (week.length > 0) {
-    while (week.length < 7) {
-      week.push({ date: 0, day: "" });
-    }
-    calendar.push(week);
-  }
-  
-  return calendar;
-};
-
-// Status Badge component
-const StatusBadge = ({ status }: { status: AttendanceStatus }) => {
-  switch (status) {
-    case AttendanceStatus.Present:
-      return <Badge variant="outline" className="border-green-500 bg-green-50 text-green-700">Present</Badge>;
-    case AttendanceStatus.Absent:
-      return <Badge variant="outline" className="border-red-500 bg-red-50 text-red-700">Absent</Badge>;
-    case AttendanceStatus.HalfDay:
-      return <Badge variant="outline" className="border-amber-500 bg-amber-50 text-amber-700">Half Day</Badge>;
-    case AttendanceStatus.WorkFromHome:
-      return <Badge variant="outline" className="border-blue-500 bg-blue-50 text-blue-700">WFH</Badge>;
-    case AttendanceStatus.OnLeave:
-      return <Badge variant="outline" className="border-purple-500 bg-purple-50 text-purple-700">Leave</Badge>;
-    default:
-      return <Badge variant="outline">Unknown</Badge>;
-  }
-};
-
-// Calendar Day component
-const CalendarDay = ({ 
-  day, 
-  date, 
-  attendance, 
-  month, 
-  year, 
-  currentDate 
-}: { 
-  day: string;
-  date: number;
-  attendance: AttendanceType | null;
-  month: number;
-  year: number;
-  currentDate: Date;
-}) => {
-  const isToday = date > 0 && 
-    date === currentDate.getDate() && 
-    month === currentDate.getMonth() + 1 && 
-    year === currentDate.getFullYear();
-  
-  const isPast = date > 0 && new Date(year, month - 1, date) < new Date(
-    currentDate.getFullYear(),
-    currentDate.getMonth(),
-    currentDate.getDate()
-  );
-  
-  const isFuture = date > 0 && new Date(year, month - 1, date) > currentDate;
-  
-  const isWeekend = day === "Sat" || day === "Sun";
-  
-  let statusColor = "";
-  
-  if (attendance) {
-    switch (attendance.status) {
-      case AttendanceStatus.Present:
-        statusColor = "bg-green-500";
-        break;
-      case AttendanceStatus.Absent:
-        statusColor = "bg-red-500";
-        break;
-      case AttendanceStatus.HalfDay:
-        statusColor = "bg-amber-500";
-        break;
-      case AttendanceStatus.WorkFromHome:
-        statusColor = "bg-blue-500";
-        break;
-      case AttendanceStatus.OnLeave:
-        statusColor = "bg-purple-500";
-        break;
-    }
-  }
-  
+const AttendanceDetailsView = ({ record }: { record: AttendanceRecord }) => {
   return (
-    <div 
-      className={`border p-4 h-24 ${
-        date === 0
-          ? "bg-gray-50" 
-          : isToday
-          ? "border-hrms-primary border-2"
-          : isWeekend
-          ? "bg-gray-50"
-          : ""
-      }`}
-    >
-      {date > 0 && (
-        <>
-          <div className="flex justify-between items-center">
-            <span className={`text-sm ${isToday ? "font-bold" : ""}`}>
-              {date}
-            </span>
-            <span className="text-xs text-gray-500">{day}</span>
-          </div>
-          
-          {isPast && !attendance && !isWeekend && (
-            <div className="mt-2 flex items-center justify-center h-8">
-              <Badge variant="outline" className="border-red-500 bg-red-50 text-red-700">
-                No data
-              </Badge>
-            </div>
-          )}
-          
-          {attendance && (
-            <div className="mt-2">
-              <div className="flex justify-center">
-                <div className={`w-4 h-4 rounded-full ${statusColor}`}></div>
-              </div>
-              <div className="text-xs text-center mt-1">
-                {attendance.status === AttendanceStatus.Present && attendance.punchInTime && (
-                  <span className="block">{formatTime(attendance.punchInTime.toString())}</span>
-                )}
-                {attendance.status === AttendanceStatus.Present && attendance.punchOutTime && (
-                  <span className="block">{formatTime(attendance.punchOutTime.toString())}</span>
-                )}
-                {attendance.status === AttendanceStatus.HalfDay && attendance.punchInTime && (
-                  <span className="block">{formatTime(attendance.punchInTime.toString())}</span>
-                )}
-                {attendance.status === AttendanceStatus.WorkFromHome && (
-                  <span className="block">WFH</span>
-                )}
-                {attendance.status === AttendanceStatus.OnLeave && (
-                  <span className="block">Leave</span>
-                )}
-              </div>
-            </div>
-          )}
-        </>
-      )}
+    <div className="space-y-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="space-y-1">
+          <p className="text-sm text-gray-500">Employee</p>
+          <p className="font-medium">{record.employee.firstName} {record.employee.lastName}</p>
+        </div>
+        <div className="space-y-1">
+          <p className="text-sm text-gray-500">Employee ID</p>
+          <p className="font-medium">{record.employeeId}</p>
+        </div>
+        <div className="space-y-1">
+          <p className="text-sm text-gray-500">Date</p>
+          <p className="font-medium">{new Date(record.date).toLocaleDateString()}</p>
+        </div>
+        <div className="space-y-1">
+          <p className="text-sm text-gray-500">Status</p>
+          <p className="font-medium capitalize">{record.status}</p>
+        </div>
+        <div className="space-y-1">
+          <p className="text-sm text-gray-500">Clock In Time</p>
+          <p className="font-medium">{record.clockInTime}</p>
+        </div>
+        <div className="space-y-1">
+          <p className="text-sm text-gray-500">Clock Out Time</p>
+          <p className="font-medium">{record.clockOutTime || "N/A"}</p>
+        </div>
+        <div className="space-y-1">
+          <p className="text-sm text-gray-500">Total Hours</p>
+          <p className="font-medium">{record.totalHours || "N/A"}</p>
+        </div>
+        <div className="space-y-1">
+          <p className="text-sm text-gray-500">Notes</p>
+          <p className="font-medium">{record.notes || "N/A"}</p>
+        </div>
+      </div>
     </div>
   );
 };
 
-const AttendancePage = () => {
+const AddAttendanceDialog = ({ open, setOpen, onAdd }: { 
+  open: boolean; 
+  setOpen: (open: boolean) => void; 
+  onAdd: (record: AttendanceRecord) => void;
+}) => {
+  const [employeeId, setEmployeeId] = useState("");
+  const [date, setDate] = useState<Date | undefined>(undefined);
+  const [status, setStatus] = useState("present");
+  const [clockInTime, setClockInTime] = useState("");
+  const [clockOutTime, setClockOutTime] = useState("");
+  const [notes, setNotes] = useState("");
+  const [employee, setEmployee] = useState<EmployeeProfile | undefined>(undefined);
+  const employees = mockEmployeeProfiles;
+
+  useEffect(() => {
+    if (employeeId) {
+      const foundEmployee = employees.find(emp => emp.employeeId === employeeId);
+      setEmployee(foundEmployee);
+    } else {
+      setEmployee(undefined);
+    }
+  }, [employeeId, employees]);
+
+  const handleAdd = () => {
+    if (!employeeId || !date || !status || !clockInTime) {
+      alert("Please fill in all required fields.");
+      return;
+    }
+
+    const newRecord: AttendanceRecord = {
+      id: `temp-${Date.now()}`,
+      employeeId: employeeId,
+      employee: employee!,
+      date: date.toISOString(),
+      status: status,
+      clockInTime: clockInTime,
+      clockOutTime: clockOutTime,
+      totalHours: clockOutTime ? calculateTotalHours(clockInTime, clockOutTime) : null,
+      notes: notes,
+    };
+
+    onAdd(newRecord);
+    setOpen(false);
+    clearForm();
+  };
+
+  const clearForm = () => {
+    setEmployeeId("");
+    setDate(undefined);
+    setStatus("present");
+    setClockInTime("");
+    setClockOutTime("");
+    setNotes("");
+  };
+
+  const calculateTotalHours = (clockIn: string, clockOut: string): string => {
+    const [clockInHours, clockInMinutes] = clockIn.split(":").map(Number);
+    const [clockOutHours, clockOutMinutes] = clockOut.split(":").map(Number);
+
+    const clockInTotalMinutes = clockInHours * 60 + clockInMinutes;
+    const clockOutTotalMinutes = clockOutHours * 60 + clockOutMinutes;
+
+    const diffMinutes = clockOutTotalMinutes - clockInTotalMinutes;
+    const totalHours = diffMinutes / 60;
+
+    return totalHours.toFixed(2);
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogContent className="max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>Add Attendance Record</DialogTitle>
+          <DialogDescription>
+            Add a new attendance record for an employee
+          </DialogDescription>
+        </DialogHeader>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="space-y-2">
+            <label htmlFor="employeeId" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed">
+              Employee
+            </label>
+            <Select value={employeeId} onValueChange={setEmployeeId}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select an employee" />
+              </SelectTrigger>
+              <SelectContent>
+                {employees.map((employee) => (
+                  <SelectItem key={employee.employeeId} value={employee.employeeId}>
+                    {employee.personalInfo.firstName} {employee.personalInfo.lastName}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-2">
+            <label htmlFor="date" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed">
+              Date
+            </label>
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button
+                  variant={"outline"}
+                  className={cn(
+                    "w-full justify-start text-left font-normal",
+                    !date && "text-muted-foreground"
+                  )}
+                >
+                  {date ? format(date, "PPP") : (
+                    <span>Pick a date</span>
+                  )}
+                  {/* <CalendarIcon className="ml-auto h-4 w-4 opacity-50" /> */}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-0" align="start">
+                <Calendar
+                  mode="single"
+                  selected={date}
+                  onSelect={setDate}
+                  disabled={(date) =>
+                    date > new Date()
+                  }
+                  initialFocus
+                />
+              </PopoverContent>
+            </Popover>
+          </div>
+          <div className="space-y-2">
+            <label htmlFor="status" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed">
+              Status
+            </label>
+            <Select value={status} onValueChange={setStatus}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="present">Present</SelectItem>
+                <SelectItem value="absent">Absent</SelectItem>
+                <SelectItem value="late">Late</SelectItem>
+                <SelectItem value="excused">Excused</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-2">
+            <label htmlFor="clockInTime" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed">
+              Clock In Time
+            </label>
+            <Input
+              type="time"
+              id="clockInTime"
+              value={clockInTime}
+              onChange={(e) => setClockInTime(e.target.value)}
+            />
+          </div>
+          <div className="space-y-2">
+            <label htmlFor="clockOutTime" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed">
+              Clock Out Time
+            </label>
+            <Input
+              type="time"
+              id="clockOutTime"
+              value={clockOutTime}
+              onChange={(e) => setClockOutTime(e.target.value)}
+            />
+          </div>
+          <div className="space-y-2">
+            <label htmlFor="notes" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed">
+              Notes
+            </label>
+            <Input
+              type="text"
+              id="notes"
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+            />
+          </div>
+        </div>
+        <div className="flex justify-end space-x-2 mt-4">
+          <Button type="button" variant="secondary" onClick={() => setOpen(false)}>
+            Cancel
+          </Button>
+          <Button type="button" onClick={handleAdd} className="bg-hrms-primary hover:bg-hrms-primary/90">
+            Add Record
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+};
+
+const EmployeesAttendancePage = () => {
   const { user } = useAuth();
   const { toast } = useToast();
-  const [profile, setProfile] = useState<EmployeeProfile | null>(null);
-  const [attendanceRecords, setAttendanceRecords] = useState<AttendanceType[]>([]);
-  const [filteredRecords, setFilteredRecords] = useState<AttendanceType[]>([]);
-  const [currentDate] = useState(new Date());
-  const [selectedYear, setSelectedYear] = useState(currentDate.getFullYear());
-  const [selectedMonth, setSelectedMonth] = useState(currentDate.getMonth() + 1);
-  const [view, setView] = useState<"calendar" | "list">("calendar");
-  const [searchDate, setSearchDate] = useState("");
-  const [statusFilter, setStatusFilter] = useState<string>("all");
-  const [calendar, setCalendar] = useState<any[]>([]);
-  const [clockedIn, setClockedIn] = useState(false);
-  const [clockInTime, setClockInTime] = useState<string | null>(null);
+  const [attendanceData, setAttendanceData] = useState<AttendanceRecord[]>([]);
+  const [filteredAttendanceData, setFilteredAttendanceData] = useState<AttendanceRecord[]>([]);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [dateFilter, setDateFilter] = useState<Date | undefined>(undefined);
+  const [employeeFilter, setEmployeeFilter] = useState<string>("all");
+  const [sortField, setSortField] = useState<string>("date");
+  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc");
+  const [selectedRecord, setSelectedRecord] = useState<AttendanceRecord | null>(null);
+  const [isDetailsOpen, setIsDetailsOpen] = useState(false);
+  const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [selectedEmployeeId, setSelectedEmployeeId] = useState<string>("");
   const [allEmployees, setAllEmployees] = useState<EmployeeProfile[]>([]);
 
   useEffect(() => {
@@ -244,182 +295,120 @@ const AttendancePage = () => {
         setAllEmployees(mockEmployeeProfiles);
       }
       
-      // Find employee profile
-      const employeeProfile = mockEmployeeProfiles.find(emp => emp.personalInfo.email === user.email);
-      
-      if (employeeProfile) {
-        setProfile(employeeProfile);
-        
-        // For regular employees - only show their attendance
-        let records = mockAttendance.filter(record => record.employeeId === employeeProfile.employeeId);
-        
-        // Check if clocked in today
-        const today = new Date().toISOString().split('T')[0];
-        const todayRecord = records.find(record => {
-          const recordDate = typeof record.date === 'string' ? record.date : record.date.toISOString().split('T')[0];
-          return recordDate === today && record.punchInTime && !record.punchOutTime;
-        });
-        
-        if (todayRecord && todayRecord.punchInTime) {
-          setClockedIn(true);
-          setClockInTime(todayRecord.punchInTime.toString());
-        }
-        
-        setAttendanceRecords(records);
-        setLoading(false);
-      } else if (user.role === UserRole.Admin || user.role === UserRole.HR) {
-        // For admin/HR - show all attendance records by default
-        setAttendanceRecords(mockAttendance);
-        setSelectedEmployeeId("");
-        setLoading(false);
-      }
+      // Set attendance data
+      const initialData = mockAttendanceData.map(record => ({
+        ...record,
+        employee: mockEmployeeProfiles.find(emp => emp.employeeId === record.employeeId)!,
+      }));
+      setAttendanceData(initialData);
+      setFilteredAttendanceData(initialData);
+      setLoading(false);
     }
   }, [user]);
 
   useEffect(() => {
-    // Generate calendar for the selected month
-    const calendarData = generateCalendar(selectedYear, selectedMonth);
-    setCalendar(calendarData);
-    
-    // Filter records for the selected month
-    filterRecords();
-  }, [selectedMonth, selectedYear, statusFilter, searchDate, attendanceRecords, selectedEmployeeId]);
+    filterAttendanceData();
+  }, [searchQuery, dateFilter, employeeFilter, sortField, sortDirection, attendanceData]);
 
-  const filterRecords = () => {
-    let filtered = [...attendanceRecords];
+  const filterAttendanceData = () => {
+    let filtered = [...attendanceData];
     
-    // Filter by employee if admin/HR and employee selected
-    if ((user?.role === UserRole.Admin || user?.role === UserRole.HR) && selectedEmployeeId) {
-      filtered = filtered.filter(record => record.employeeId === selectedEmployeeId);
-    }
-    
-    // Filter by month and year
-    filtered = filtered.filter((record) => {
-      const recordDate = new Date(typeof record.date === 'string' ? record.date : record.date.toISOString());
-      return (
-        recordDate.getMonth() + 1 === selectedMonth &&
-        recordDate.getFullYear() === selectedYear
-      );
-    });
-    
-    // Filter by status if selected
-    if (statusFilter !== "all") {
+    // Apply search filter
+    if (searchQuery) {
+      const query = searchQuery.toLowerCase();
       filtered = filtered.filter(
-        (record) => record.status === statusFilter
+        record => 
+          record.employee.firstName.toLowerCase().includes(query) ||
+          record.employee.lastName.toLowerCase().includes(query) ||
+          record.employeeId.toLowerCase().includes(query)
       );
     }
     
-    // Filter by date if search date is provided
-    if (searchDate) {
-      filtered = filtered.filter((record) => {
-        const recordDateStr = typeof record.date === 'string' ? 
-          record.date : 
-          record.date.toISOString().split('T')[0];
-        return recordDateStr.includes(searchDate);
-      });
+    // Apply date filter
+    if (dateFilter) {
+      const filterDate = dateFilter.toISOString().split('T')[0];
+      filtered = filtered.filter(record => record.date.split('T')[0] === filterDate);
     }
     
-    setFilteredRecords(filtered);
-  };
-
-  const handlePreviousMonth = () => {
-    if (selectedMonth === 1) {
-      setSelectedMonth(12);
-      setSelectedYear(selectedYear - 1);
-    } else {
-      setSelectedMonth(selectedMonth - 1);
-    }
-  };
-
-  const handleNextMonth = () => {
-    if (selectedMonth === 12) {
-      setSelectedMonth(1);
-      setSelectedYear(selectedYear + 1);
-    } else {
-      setSelectedMonth(selectedMonth + 1);
-    }
-  };
-
-  const handleClockIn = () => {
-    // In a real app, we would send this to a server
-    // For this demo, we'll simulate adding an attendance record
-    const now = new Date();
-    const today = now.toISOString().split('T')[0];
-    
-    // Check if already has a record for today
-    const existingRecord = attendanceRecords.find(record => {
-      const recordDate = typeof record.date === 'string' ? record.date : record.date.toISOString().split('T')[0];
-      return recordDate === today;
-    });
-    
-    if (existingRecord) {
-      toast({
-        title: "Already clocked in",
-        description: "You have already recorded attendance for today."
-      });
-      return;
+    // Apply employee filter
+    if (employeeFilter !== "all") {
+      filtered = filtered.filter(record => record.employeeId === employeeFilter);
     }
     
-    const newRecord: AttendanceType = {
-      id: `a-${profile?.employeeId}-${today}`,
-      employeeId: profile?.employeeId || "",
-      date: today,
-      punchInTime: now.toISOString(),
-      status: AttendanceStatus.Present
-    };
-    
-    setAttendanceRecords([...attendanceRecords, newRecord]);
-    setClockedIn(true);
-    setClockInTime(now.toISOString());
-    
-    toast({
-      title: "Clocked In",
-      description: `Successfully clocked in at ${formatTime(now.toISOString())}`
-    });
-  };
-
-  const handleClockOut = () => {
-    // In a real app, we would send this to a server
-    // For this demo, we'll simulate updating the attendance record
-    const now = new Date();
-    const today = now.toISOString().split('T')[0];
-    
-    // Find today's record
-    const updatedRecords = attendanceRecords.map(record => {
-      const recordDate = typeof record.date === 'string' ? record.date : record.date.toISOString().split('T')[0];
+    // Apply sorting
+    filtered.sort((a, b) => {
+      let comparison = 0;
       
-      if (recordDate === today && record.punchInTime) {
-        const punchInTime = new Date(record.punchInTime);
-        const timeDiff = now.getTime() - punchInTime.getTime();
-        const hours = Math.round(timeDiff / (1000 * 60 * 60) * 10) / 10;
-        
-        return {
-          ...record,
-          punchOutTime: now.toISOString(),
-          workHours: hours
-        };
+      switch (sortField) {
+        case "employee":
+          const nameA = `${a.employee.firstName} ${a.employee.lastName}`.toLowerCase();
+          const nameB = `${b.employee.firstName} ${b.employee.lastName}`.toLowerCase();
+          comparison = nameA.localeCompare(nameB);
+          break;
+        case "id":
+          comparison = a.employeeId.localeCompare(b.employeeId);
+          break;
+        case "date":
+          const dateA = new Date(a.date).getTime();
+          const dateB = new Date(b.date).getTime();
+          comparison = dateA - dateB;
+          break;
+        default:
+          break;
       }
-      return record;
+      
+      return sortDirection === "asc" ? comparison : -comparison;
     });
     
-    setAttendanceRecords(updatedRecords);
-    setClockedIn(false);
-    
+    setFilteredAttendanceData(filtered);
+  };
+
+  const handleSort = (field: string) => {
+    if (sortField === field) {
+      setSortDirection(sortDirection === "asc" ? "desc" : "asc");
+    } else {
+      setSortField(field);
+      setSortDirection("asc");
+    }
+  };
+
+  const handleViewRecord = (record: AttendanceRecord) => {
+    setSelectedRecord(record);
+    setIsDetailsOpen(true);
+  };
+
+  const handleAddRecord = (record: AttendanceRecord) => {
+    setAttendanceData([...attendanceData, record]);
+    setFilteredAttendanceData([...filteredAttendanceData, record]);
     toast({
-      title: "Clocked Out",
-      description: `Successfully clocked out at ${formatTime(now.toISOString())}`
+      title: "Attendance Record Added",
+      description: "The attendance record has been successfully added."
     });
   };
 
-  const getAttendanceForDate = (date: number): AttendanceType | null => {
-    if (date === 0) return null;
-    
-    const dateStr = `${selectedYear}-${String(selectedMonth).padStart(2, '0')}-${String(date).padStart(2, '0')}`;
-    return filteredRecords.find(record => {
-      const recordDate = typeof record.date === 'string' ? record.date : record.date.toISOString().split('T')[0];
-      return recordDate === dateStr;
-    }) || null;
+  const handleClearFilters = () => {
+    setSearchQuery("");
+    setDateFilter(undefined);
+    setEmployeeFilter("all");
   };
+
+  if (!user || (user.role !== UserRole.Admin && user.role !== UserRole.HR)) {
+    return (
+      <div className="flex items-center justify-center min-h-[70vh]">
+        <Card className="w-full max-w-md">
+          <CardHeader>
+            <CardTitle className="text-center text-red-500">Access Denied</CardTitle>
+            <CardDescription className="text-center">
+              You don't have permission to access the attendance management section.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="flex justify-center">
+            <Clock className="h-24 w-24 text-red-500 opacity-50" />
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   if (loading) {
     return (
@@ -436,278 +425,199 @@ const AttendancePage = () => {
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center">
         <div>
-          <h1 className="text-2xl font-bold">Time & Attendance</h1>
-          <p className="text-gray-500">Track your daily attendance and working hours</p>
+          <h1 className="text-2xl font-bold">Attendance Management</h1>
+          <p className="text-gray-500">Manage employee attendance records</p>
         </div>
         
-        <div className="mt-4 md:mt-0 flex space-x-2">
-          <Button
-            variant={view === "calendar" ? "default" : "outline"}
-            className={view === "calendar" ? "bg-hrms-primary hover:bg-hrms-primary/90" : ""}
-            onClick={() => setView("calendar")}
-          >
-            <Calendar className="mr-2 h-4 w-4" />
-            Calendar
-          </Button>
-          <Button
-            variant={view === "list" ? "default" : "outline"}
-            className={view === "list" ? "bg-hrms-primary hover:bg-hrms-primary/90" : ""}
-            onClick={() => setView("list")}
-          >
-            <Search className="mr-2 h-4 w-4" />
-            List
-          </Button>
-        </div>
+        <Button onClick={() => setIsAddDialogOpen(true)} className="mt-4 md:mt-0 bg-hrms-primary hover:bg-hrms-primary/90">
+          <Clock className="mr-2 h-4 w-4" />
+          Add Attendance
+        </Button>
       </div>
       
-      {/* Employee selector for admin/HR */}
-      {(user?.role === UserRole.Admin || user?.role === UserRole.HR) && (
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle>Employee Selection</CardTitle>
-            <CardDescription>Select an employee to view their attendance records</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Select 
-              value={selectedEmployeeId} 
-              onValueChange={setSelectedEmployeeId}
-            >
+      {/* Filters and Search */}
+      <Card>
+        <CardContent className="p-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="relative">
+              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-gray-500" />
+              <Input
+                placeholder="Search employee..."
+                className="pl-8"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
+            </div>
+            
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button
+                  variant={"outline"}
+                  className={cn(
+                    "justify-start text-left font-normal",
+                    !dateFilter && "text-muted-foreground"
+                  )}
+                >
+                  {dateFilter ? format(dateFilter, "PPP") : (
+                    <span>Filter by date</span>
+                  )}
+                   <Calendar className="ml-auto h-4 w-4 opacity-50" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-0" align="start">
+                <Calendar
+                  mode="single"
+                  selected={dateFilter}
+                  onSelect={setDateFilter}
+                  disabled={(date) =>
+                    date > new Date()
+                  }
+                  initialFocus
+                />
+              </PopoverContent>
+            </Popover>
+            
+            <Select value={employeeFilter} onValueChange={setEmployeeFilter}>
               <SelectTrigger>
-                <SelectValue placeholder="All Employees" />
+                <SelectValue placeholder="Filter by employee" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">All Employees</SelectItem>
-                {allEmployees.map((emp) => (
-                  <SelectItem key={emp.employeeId} value={emp.employeeId}>
-                    {emp.personalInfo.name} ({emp.employeeId})
+                <SelectItem value="all">All Employees</SelectItem>
+                {allEmployees.map((employee) => (
+                  <SelectItem key={employee.employeeId} value={employee.employeeId}>
+                    {employee.personalInfo.firstName} {employee.personalInfo.lastName}
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
-          </CardContent>
-        </Card>
-      )}
-      
-      {/* Clock in/out card - only show for regular employees viewing their own data */}
-      {(!user || user.role === UserRole.Employee || selectedEmployeeId === profile?.employeeId) && (
-        <Card>
-          <CardContent className="p-6">
-            <div className="flex flex-col md:flex-row items-center justify-between">
-              <div className="flex items-center mb-4 md:mb-0">
-                <div className="h-16 w-16 rounded-full bg-hrms-primary/10 flex items-center justify-center">
-                  <Clock className="h-8 w-8 text-hrms-primary" />
-                </div>
-                <div className="ml-4">
-                  <h2 className="text-xl font-semibold">
-                    {new Date().toLocaleDateString(undefined, { 
-                      weekday: 'long', 
-                      day: 'numeric', 
-                      month: 'long',
-                      year: 'numeric'
-                    })}
-                  </h2>
-                  <p className="text-gray-500">
-                    {new Date().toLocaleTimeString(undefined, { 
-                      hour: '2-digit', 
-                      minute: '2-digit',
-                      second: '2-digit'
-                    })}
-                  </p>
-                </div>
-              </div>
-              
-              <div className="flex space-x-3">
-                <Button
-                  onClick={handleClockIn}
-                  disabled={clockedIn}
-                  className="bg-green-600 hover:bg-green-700"
-                >
-                  Clock In
-                </Button>
-                <Button
-                  onClick={handleClockOut}
-                  disabled={!clockedIn}
-                  className="bg-amber-600 hover:bg-amber-700"
-                >
-                  Clock Out
-                </Button>
-              </div>
-            </div>
-            
-            {clockedIn && clockInTime && (
-              <div className="mt-4 p-3 bg-green-50 text-green-700 rounded-md">
-                <p className="text-sm">
-                  You clocked in at {formatTime(clockInTime)}. Don't forget to clock out at the end of your workday.
-                </p>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      )}
-      
-      {/* Filters */}
-      <div className="flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-2">
-        <div className="flex items-center space-x-2">
-          <ChevronLeft 
-            className="h-6 w-6 cursor-pointer hover:text-hrms-primary"
-            onClick={handlePreviousMonth}
-          />
-          <span className="font-medium">
-            {getMonthName(selectedMonth)} {selectedYear}
-          </span>
-          <ChevronRight 
-            className="h-6 w-6 cursor-pointer hover:text-hrms-primary"
-            onClick={handleNextMonth}
-          />
-        </div>
-        
-        <div className="flex-1"></div>
-        
-        <div className="flex space-x-2">
-          <Input 
-            type="date" 
-            placeholder="Filter by date"
-            className="w-auto"
-            value={searchDate}
-            onChange={(e) => setSearchDate(e.target.value)}
-          />
-          
-          <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger className="w-[180px]">
-              <SelectValue placeholder="Filter by status" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Statuses</SelectItem>
-              <SelectItem value={AttendanceStatus.Present}>Present</SelectItem>
-              <SelectItem value={AttendanceStatus.Absent}>Absent</SelectItem>
-              <SelectItem value={AttendanceStatus.HalfDay}>Half Day</SelectItem>
-              <SelectItem value={AttendanceStatus.WorkFromHome}>Work From Home</SelectItem>
-              <SelectItem value={AttendanceStatus.OnLeave}>On Leave</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
-      
-      {/* Calendar View */}
-      {view === "calendar" && (
-        <div className="bg-white rounded-lg border">
-          {/* Calendar header */}
-          <div className="grid grid-cols-7 border-b">
-            {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day) => (
-              <div key={day} className="p-4 text-center font-medium">
-                {day}
-              </div>
-            ))}
           </div>
           
-          {/* Calendar body */}
-          {calendar.map((week, weekIndex) => (
-            <div key={`week-${weekIndex}`} className="grid grid-cols-7">
-              {week.map((day: any, dayIndex: number) => (
-                <CalendarDay
-                  key={`day-${weekIndex}-${dayIndex}`}
-                  day={day.day}
-                  date={day.date}
-                  attendance={getAttendanceForDate(day.date)}
-                  month={selectedMonth}
-                  year={selectedYear}
-                  currentDate={currentDate}
-                />
-              ))}
+          {(searchQuery || dateFilter || employeeFilter !== "all") && (
+            <div className="flex justify-between items-center mt-4">
+              <p className="text-sm text-gray-500">
+                Showing {filteredAttendanceData.length} of {attendanceData.length} records
+              </p>
+              <Button variant="outline" size="sm" onClick={handleClearFilters}>
+                Clear Filters
+              </Button>
             </div>
-          ))}
-        </div>
-      )}
+          )}
+        </CardContent>
+      </Card>
       
-      {/* List View */}
-      {view === "list" && (
-        <Card>
-          <CardContent className="p-0">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  {(user?.role === UserRole.Admin || user?.role === UserRole.HR) && !selectedEmployeeId && (
-                    <TableHead>Employee</TableHead>
-                  )}
-                  <TableHead>Date</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Clock In</TableHead>
-                  <TableHead>Clock Out</TableHead>
-                  <TableHead>Work Hours</TableHead>
-                  <TableHead>Comments</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredRecords.length > 0 ? (
-                  filteredRecords.map((record) => {
-                    const employeeName = user?.role !== UserRole.Employee 
-                      ? mockEmployeeProfiles.find(emp => emp.employeeId === record.employeeId)?.personalInfo.name || "Unknown"
-                      : "";
-                      
-                    return (
-                      <TableRow key={record.id}>
-                        {(user?.role === UserRole.Admin || user?.role === UserRole.HR) && !selectedEmployeeId && (
-                          <TableCell>{employeeName}</TableCell>
-                        )}
-                        <TableCell>
-                          {new Date(typeof record.date === 'string' ? record.date : record.date.toISOString()).toLocaleDateString()}
-                        </TableCell>
-                        <TableCell>
-                          <StatusBadge status={record.status} />
-                        </TableCell>
-                        <TableCell>
-                          {record.punchInTime ? formatTime(record.punchInTime.toString()) : "N/A"}
-                        </TableCell>
-                        <TableCell>
-                          {record.punchOutTime ? formatTime(record.punchOutTime.toString()) : "N/A"}
-                        </TableCell>
-                        <TableCell>
-                          {record.workHours !== undefined ? `${record.workHours} hrs` : "N/A"}
-                        </TableCell>
-                        <TableCell>
-                          {record.comments || "—"}
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })
-                ) : (
-                  <TableRow>
-                    <TableCell colSpan={(user?.role === UserRole.Admin || user?.role === UserRole.HR) && !selectedEmployeeId ? 7 : 6} className="text-center py-4">
-                      No attendance records found for the selected filters
+      {/* Attendance Table */}
+      <Card>
+        <CardContent className="p-0">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="w-[250px]">
+                  <div 
+                    className="flex items-center cursor-pointer"
+                    onClick={() => handleSort("employee")}
+                  >
+                    Employee
+                    {sortField === "employee" && (
+                      <ArrowUpDown className={`ml-2 h-4 w-4 ${sortDirection === "desc" ? "transform rotate-180" : ""}`} />
+                    )}
+                  </div>
+                </TableHead>
+                <TableHead>
+                  <div 
+                    className="flex items-center cursor-pointer"
+                    onClick={() => handleSort("id")}
+                  >
+                    ID
+                    {sortField === "id" && (
+                      <ArrowUpDown className={`ml-2 h-4 w-4 ${sortDirection === "desc" ? "transform rotate-180" : ""}`} />
+                    )}
+                  </div>
+                </TableHead>
+                <TableHead>
+                  <div 
+                    className="flex items-center cursor-pointer"
+                    onClick={() => handleSort("date")}
+                  >
+                    Date
+                    {sortField === "date" && (
+                      <ArrowUpDown className={`ml-2 h-4 w-4 ${sortDirection === "desc" ? "transform rotate-180" : ""}`} />
+                    )}
+                  </div>
+                </TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Clock In</TableHead>
+                <TableHead>Clock Out</TableHead>
+                <TableHead>Total Hours</TableHead>
+                <TableHead className="text-right">Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {filteredAttendanceData.length > 0 ? (
+                filteredAttendanceData.map((record) => (
+                  <TableRow key={record.id}>
+                    <TableCell>
+                      <div className="flex items-center">
+                        <Avatar className="h-8 w-8 mr-2">
+                          <AvatarImage src="/placeholder.svg" />
+                          <AvatarFallback className="bg-hrms-primary/20 text-hrms-primary">
+                            {record.employee.firstName.substring(0, 1) + record.employee.lastName.substring(0, 1)}
+                          </AvatarFallback>
+                        </Avatar>
+                        <div>
+                          <p className="font-medium">{record.employee.firstName} {record.employee.lastName}</p>
+                          <p className="text-xs text-gray-500">{record.employeeId}</p>
+                        </div>
+                      </div>
+                    </TableCell>
+                    <TableCell>{record.employeeId}</TableCell>
+                    <TableCell>{new Date(record.date).toLocaleDateString()}</TableCell>
+                    <TableCell className="capitalize">{record.status}</TableCell>
+                    <TableCell>{record.clockInTime}</TableCell>
+                    <TableCell>{record.clockOutTime || "N/A"}</TableCell>
+                    <TableCell>{record.totalHours || "N/A"}</TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex justify-end space-x-2">
+                        <Button 
+                          variant="outline" 
+                          size="sm"
+                          className="h-8 w-8 p-0"
+                          onClick={() => handleViewRecord(record)}
+                        >
+                          <Eye className="h-4 w-4" />
+                        </Button>
+                      </div>
                     </TableCell>
                   </TableRow>
-                )}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
-      )}
+                ))
+              ) : (
+                <TableRow>
+                  <TableCell colSpan={8} className="h-24 text-center">
+                    No attendance records found matching your filters.
+                  </TableCell>
+                </TableRow>
+              )}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
       
-      {/* Legend */}
-      <div className="flex flex-wrap gap-4 p-4 bg-white rounded-lg border">
-        <div className="flex items-center">
-          <div className="w-4 h-4 rounded-full bg-green-500 mr-2"></div>
-          <span className="text-sm">Present</span>
-        </div>
-        <div className="flex items-center">
-          <div className="w-4 h-4 rounded-full bg-red-500 mr-2"></div>
-          <span className="text-sm">Absent</span>
-        </div>
-        <div className="flex items-center">
-          <div className="w-4 h-4 rounded-full bg-amber-500 mr-2"></div>
-          <span className="text-sm">Half Day</span>
-        </div>
-        <div className="flex items-center">
-          <div className="w-4 h-4 rounded-full bg-blue-500 mr-2"></div>
-          <span className="text-sm">Work From Home</span>
-        </div>
-        <div className="flex items-center">
-          <div className="w-4 h-4 rounded-full bg-purple-500 mr-2"></div>
-          <span className="text-sm">Leave</span>
-        </div>
-      </div>
+      {/* Attendance Details Dialog */}
+      <Dialog open={isDetailsOpen} onOpenChange={setIsDetailsOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Attendance Record Details</DialogTitle>
+            <DialogDescription>
+              View detailed information about this attendance record
+            </DialogDescription>
+          </DialogHeader>
+          {selectedRecord && <AttendanceDetailsView record={selectedRecord} />}
+        </DialogContent>
+      </Dialog>
+      
+      {/* Add Attendance Dialog */}
+      <AddAttendanceDialog open={isAddDialogOpen} setOpen={setIsAddDialogOpen} onAdd={handleAddRecord} />
     </div>
   );
 };
 
-export default AttendancePage;
+export default EmployeesAttendancePage;

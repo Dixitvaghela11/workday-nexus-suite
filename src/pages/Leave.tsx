@@ -368,7 +368,7 @@ const LeavePage = () => {
 
   const getEmployeeName = (employeeId: string) => {
     const employee = mockEmployeeProfiles.find(emp => emp.employeeId === employeeId);
-    return employee ? employee.personalInfo.name : "Unknown";
+    return employee ? employee.personalInfo.firstName + " " + employee.personalInfo.lastName : "Unknown";
   };
   
   // Filter leave applications based on selected employee for admin/HR
@@ -558,7 +558,7 @@ const LeavePage = () => {
                 <SelectItem value="">All Employees</SelectItem>
                 {allEmployees.map((emp) => (
                   <SelectItem key={emp.employeeId} value={emp.employeeId}>
-                    {emp.personalInfo.name} ({emp.employeeId})
+                    {emp.personalInfo.firstName + " " + emp.personalInfo.lastName} ({emp.employeeId})
                   </SelectItem>
                 ))}
               </SelectContent>

@@ -320,10 +320,10 @@ const PayrollPage = () => {
                   <SelectValue placeholder="Select Employee" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">All Employees</SelectItem>
+                  <SelectItem value="all-employees">All Employees</SelectItem>
                   {allEmployees.map(emp => (
                     <SelectItem key={emp.employeeId} value={emp.employeeId}>
-                      {emp.personalInfo.name}
+                      {emp.personalInfo.firstName} {emp.personalInfo.lastName}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -393,7 +393,7 @@ const PayrollPage = () => {
               {filteredItems.length > 0 ? (
                 filteredItems.map((payroll) => {
                   const employeeName = (user?.role === UserRole.Admin || user?.role === UserRole.HR) && !selectedEmployeeId
-                    ? mockEmployeeProfiles.find(emp => emp.employeeId === payroll.employeeId)?.personalInfo.name || "Unknown"
+                    ? mockEmployeeProfiles.find(emp => emp.employeeId === payroll.employeeId)?.personalInfo.firstName + " " + mockEmployeeProfiles.find(emp => emp.employeeId === payroll.employeeId)?.personalInfo.lastName || "Unknown"
                     : "";
                     
                   return (
