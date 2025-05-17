@@ -180,7 +180,7 @@ const LeavePage = () => {
 
   useEffect(() => {
     // If an employee is selected by admin/HR, update the leave balances
-    if ((user?.role === UserRole.Admin || user?.role === UserRole.HR) && selectedEmployeeId) {
+    if (user && (user.role === UserRole.Admin || user.role === UserRole.HR) && selectedEmployeeId) {
       const selectedEmpBalances = mockLeaveBalances[selectedEmployeeId];
       if (selectedEmpBalances) {
         setLeaveBalances(selectedEmpBalances);
@@ -372,9 +372,8 @@ const LeavePage = () => {
   };
   
   // Filter leave applications based on selected employee for admin/HR
-  const filteredLeaveApplications = user?.role !== UserRole.Employee && selectedEmployeeId 
-    ? leaveApplications.filter(leave => leave.employeeId === selectedEmployeeId) 
-    : leaveApplications;
+  const filteredLeaveApplications = user?.role === UserRole.Employee ? leaveApplications : 
+    selectedEmployeeId ? leaveApplications.filter(leave => leave.employeeId === selectedEmployeeId) : leaveApplications;
 
   if (loading) {
     return (
