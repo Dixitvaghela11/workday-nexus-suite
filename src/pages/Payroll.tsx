@@ -1,8 +1,7 @@
-
 import { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { mockEmployeeProfiles, mockPayrollItems } from "@/services/mockData";
-import { EmployeeProfile, PayrollItem } from "@/types";
+import { EmployeeProfile, PayrollItem, UserRole } from "@/types";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { 
@@ -27,7 +26,9 @@ import {
   FileText,
   Download,
   Filter,
-  Calendar
+  Calendar,
+  Users,
+  Clock
 } from "lucide-react";
 
 const PayslipDetails = ({ payroll }: { payroll: PayrollItem }) => {
@@ -194,25 +195,52 @@ const PayrollPage = () => {
   const [payslipDialogOpen, setPayslipDialogOpen] = useState(false);
   const [yearFilter, setYearFilter] = useState<string>("all");
   const [monthFilter, setMonthFilter] = useState<string>("all");
+  const [loading, setLoading] = useState(true);
+  const [selectedEmployeeId, setSelectedEmployeeId] = useState<string>("");
+  const [allEmployees, setAllEmployees] = useState<EmployeeProfile[]>([]);
 
   useEffect(() => {
     if (user) {
+      setLoading(true);
+      
+      // Set all employees data for admin/HR
+      if (user.role === UserRole.Admin || user.role === UserRole.HR) {
+        setAllEmployees(mockEmployeeProfiles);
+      }
+      
       // Find employee profile
       const employeeProfile = mockEmployeeProfiles.find(emp => emp.personalInfo.email === user.email);
       
       if (employeeProfile) {
         setProfile(employeeProfile);
         
-        // Get payroll items for this employee
-        const items = mockPayrollItems.filter(item => item.employeeId === employeeProfile.employeeId);
-        setPayrollItems(items);
-        setFilteredItems(items);
+        // For regular employees - only show their payroll
+        if (user.role === UserRole.Employee) {
+          const items = mockPayrollItems.filter(item => item.employeeId === employeeProfile.employeeId);
+          setPayrollItems(items);
+          setFilteredItems(items);
+        } else {
+          // For admin/HR - show all payroll items by default
+          setPayrollItems(mockPayrollItems);
+          setFilteredItems(mockPayrollItems);
+        }
+        setLoading(false);
+      } else if (user.role === UserRole.Admin || user.role === UserRole.HR) {
+        // Fallback for admin/HR without profile
+        setPayrollItems(mockPayrollItems);
+        setFilteredItems(mockPayrollItems);
+        setLoading(false);
       }
     }
   }, [user]);
 
   useEffect(() => {
     let filtered = [...payrollItems];
+    
+    // Apply employee filter
+    if (selectedEmployeeId) {
+      filtered = filtered.filter(item => item.employeeId === selectedEmployeeId);
+    }
     
     // Apply year filter
     if (yearFilter !== "all") {
@@ -225,7 +253,7 @@ const PayrollPage = () => {
     }
     
     setFilteredItems(filtered);
-  }, [yearFilter, monthFilter, payrollItems]);
+  }, [yearFilter, monthFilter, selectedEmployeeId, payrollItems]);
 
   const viewPayslip = (payroll: PayrollItem) => {
     setSelectedPayslip(payroll);
@@ -259,6 +287,17 @@ const PayrollPage = () => {
     return monthNames[month - 1];
   };
 
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-[60vh]">
+        <div className="text-center">
+          <Clock className="animate-spin h-10 w-10 text-hrms-primary mx-auto mb-4" />
+          <p className="text-xl font-medium">Loading payroll data...</p>
+        </div>
+      </div>
+    );
+  }
+
   if (!profile) {
     return <div className="py-10 text-center">Loading payroll data...</div>;
   }
@@ -272,6 +311,26 @@ const PayrollPage = () => {
         </div>
         
         <div className="mt-4 md:mt-0 flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-2">
+          {/* Employee filter for admin/HR */}
+          {(user?.role === UserRole.Admin || user?.role === UserRole.HR) && (
+            <div className="flex items-center space-x-2">
+              <Users className="h-4 w-4 text-gray-500" />
+              <Select value={selectedEmployeeId} onValueChange={setSelectedEmployeeId}>
+                <SelectTrigger className="w-[200px]">
+                  <SelectValue placeholder="Select Employee" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">All Employees</SelectItem>
+                  {allEmployees.map(emp => (
+                    <SelectItem key={emp.employeeId} value={emp.employeeId}>
+                      {emp.personalInfo.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+          
           <div className="flex items-center space-x-2">
             <Filter className="h-4 w-4 text-gray-500" />
             <Select value={yearFilter} onValueChange={setYearFilter}>
@@ -310,13 +369,16 @@ const PayrollPage = () => {
         <CardHeader>
           <CardTitle>Salary Statements</CardTitle>
           <CardDescription>
-            Your salary statements for all pay periods
+            {user?.role === UserRole.Employee ? "Your salary statements for all pay periods" : "Salary statements for all employees"}
           </CardDescription>
         </CardHeader>
         <CardContent>
           <Table>
             <TableHeader>
               <TableRow>
+                {(user?.role === UserRole.Admin || user?.role === UserRole.HR) && !selectedEmployeeId && (
+                  <TableHead>Employee</TableHead>
+                )}
                 <TableHead>Month</TableHead>
                 <TableHead>Year</TableHead>
                 <TableHead>Basic Salary</TableHead>
@@ -329,51 +391,60 @@ const PayrollPage = () => {
             </TableHeader>
             <TableBody>
               {filteredItems.length > 0 ? (
-                filteredItems.map((payroll) => (
-                  <TableRow key={payroll.id}>
-                    <TableCell>{getMonthName(payroll.month)}</TableCell>
-                    <TableCell>{payroll.year}</TableCell>
-                    <TableCell>₹{payroll.basicSalary.toLocaleString()}</TableCell>
-                    <TableCell>
-                      ₹{(payroll.hra + payroll.conveyanceAllowance + 
-                         payroll.medicalAllowance + payroll.specialAllowance).toLocaleString()}
-                    </TableCell>
-                    <TableCell>₹{payroll.totalDeductions.toLocaleString()}</TableCell>
-                    <TableCell className="text-right font-medium">₹{payroll.netPayable.toLocaleString()}</TableCell>
-                    <TableCell>
-                      <Badge variant={payroll.status === "paid" ? "outline" : "secondary"} className={
-                        payroll.status === "paid" 
-                          ? "border-green-500 bg-green-50 text-green-700" 
-                          : ""
-                      }>
-                        {payroll.status === "paid" ? "Paid" : "Generated"}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex space-x-2">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => viewPayslip(payroll)}
-                        >
-                          <FileText className="h-4 w-4 mr-1" />
-                          View
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => downloadPayslip(payroll)}
-                        >
-                          <Download className="h-4 w-4 mr-1" />
-                          PDF
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))
+                filteredItems.map((payroll) => {
+                  const employeeName = (user?.role === UserRole.Admin || user?.role === UserRole.HR) && !selectedEmployeeId
+                    ? mockEmployeeProfiles.find(emp => emp.employeeId === payroll.employeeId)?.personalInfo.name || "Unknown"
+                    : "";
+                    
+                  return (
+                    <TableRow key={payroll.id}>
+                      {(user?.role === UserRole.Admin || user?.role === UserRole.HR) && !selectedEmployeeId && (
+                        <TableCell>{employeeName}</TableCell>
+                      )}
+                      <TableCell>{getMonthName(payroll.month)}</TableCell>
+                      <TableCell>{payroll.year}</TableCell>
+                      <TableCell>₹{payroll.basicSalary.toLocaleString()}</TableCell>
+                      <TableCell>
+                        ₹{(payroll.hra + payroll.conveyanceAllowance + 
+                           payroll.medicalAllowance + payroll.specialAllowance).toLocaleString()}
+                      </TableCell>
+                      <TableCell>₹{payroll.totalDeductions.toLocaleString()}</TableCell>
+                      <TableCell className="text-right font-medium">₹{payroll.netPayable.toLocaleString()}</TableCell>
+                      <TableCell>
+                        <Badge variant={payroll.status === "paid" ? "outline" : "secondary"} className={
+                          payroll.status === "paid" 
+                            ? "border-green-500 bg-green-50 text-green-700" 
+                            : ""
+                        }>
+                          {payroll.status === "paid" ? "Paid" : "Generated"}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex space-x-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => viewPayslip(payroll)}
+                          >
+                            <FileText className="h-4 w-4 mr-1" />
+                            View
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => downloadPayslip(payroll)}
+                          >
+                            <Download className="h-4 w-4 mr-1" />
+                            PDF
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })
               ) : (
                 <TableRow>
-                  <TableCell colSpan={8} className="text-center py-4">
+                  <TableCell colSpan={(user?.role === UserRole.Admin || user?.role === UserRole.HR) && !selectedEmployeeId ? 9 : 8} className="text-center py-4">
                     No payroll items found for the selected filters
                   </TableCell>
                 </TableRow>

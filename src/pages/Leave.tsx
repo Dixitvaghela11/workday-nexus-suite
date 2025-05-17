@@ -1,8 +1,7 @@
-
 import { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { mockEmployeeProfiles, mockLeaves, mockLeaveBalances } from "@/services/mockData";
-import { EmployeeProfile, Leave as LeaveType, LeaveStatus, LeaveType as LeaveCategory, LeaveBalance } from "@/types";
+import { EmployeeProfile, Leave as LeaveType, LeaveStatus, LeaveType as LeaveCategory, LeaveBalance, UserRole } from "@/types";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { 
@@ -40,7 +39,7 @@ import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { format, differenceInDays, addDays } from "date-fns";
 import { cn } from "@/lib/utils";
-import { CalendarIcon, Plus } from "lucide-react";
+import { CalendarIcon, Plus, Clock, Users } from "lucide-react";
 
 const LeaveBalanceCard = ({ leaveType, total, used, balance, pending }: { 
   leaveType: LeaveCategory; 
@@ -102,6 +101,9 @@ const LeavePage = () => {
   const [profile, setProfile] = useState<EmployeeProfile | null>(null);
   const [leaveBalances, setLeaveBalances] = useState<LeaveBalance[]>([]);
   const [leaveApplications, setLeaveApplications] = useState<LeaveType[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [selectedEmployeeId, setSelectedEmployeeId] = useState<string>("");
+  const [allEmployees, setAllEmployees] = useState<EmployeeProfile[]>([]);
   
   // New leave application form state
   const [leaveDialogOpen, setLeaveDialogOpen] = useState(false);
@@ -118,6 +120,13 @@ const LeavePage = () => {
   
   useEffect(() => {
     if (user) {
+      setLoading(true);
+      
+      // Set all employees data for admin/HR
+      if (user.role === UserRole.Admin || user.role === UserRole.HR) {
+        setAllEmployees(mockEmployeeProfiles);
+      }
+      
       // Find employee profile
       const employeeProfile = mockEmployeeProfiles.find(emp => emp.personalInfo.email === user.email);
       
@@ -130,9 +139,20 @@ const LeavePage = () => {
           setLeaveBalances(balances);
         }
         
-        // Get leave applications
-        const leaves = mockLeaves.filter(leave => leave.employeeId === employeeProfile.employeeId);
-        setLeaveApplications(leaves);
+        if (user.role === UserRole.Employee) {
+          // For regular employees - only show their leave applications
+          const leaves = mockLeaves.filter(leave => leave.employeeId === employeeProfile.employeeId);
+          setLeaveApplications(leaves);
+        } else {
+          // For admin/HR - show all leave applications
+          setLeaveApplications(mockLeaves);
+        }
+        
+        setLoading(false);
+      } else if (user.role === UserRole.Admin || user.role === UserRole.HR) {
+        // Fallback for admin/HR without profile
+        setLeaveApplications(mockLeaves);
+        setLoading(false);
       }
     }
   }, [user]);
@@ -157,6 +177,18 @@ const LeavePage = () => {
       setApplicableDays(0);
     }
   }, [dateRange]);
+
+  useEffect(() => {
+    // If an employee is selected by admin/HR, update the leave balances
+    if ((user?.role === UserRole.Admin || user?.role === UserRole.HR) && selectedEmployeeId) {
+      const selectedEmpBalances = mockLeaveBalances[selectedEmployeeId];
+      if (selectedEmpBalances) {
+        setLeaveBalances(selectedEmpBalances);
+      } else {
+        setLeaveBalances([]);
+      }
+    }
+  }, [selectedEmployeeId, user?.role]);
 
   const handleLeaveSubmit = () => {
     if (!leaveType || !dateRange.from || !dateRange.to || !leaveReason) {
@@ -279,8 +311,80 @@ const LeavePage = () => {
     });
   };
 
-  if (!profile) {
-    return <div className="py-10 text-center">Loading leave data...</div>;
+  const handleLeaveStatusChange = (leaveId: string, newStatus: LeaveStatus) => {
+    if (!user || (user.role !== UserRole.Admin && user.role !== UserRole.HR)) {
+      return;
+    }
+    
+    // Update the leave status
+    const updatedLeaves = leaveApplications.map(leave => {
+      if (leave.id === leaveId) {
+        return {
+          ...leave,
+          status: newStatus,
+          approvedBy: newStatus === LeaveStatus.Approved ? user.id : undefined,
+          rejectedBy: newStatus === LeaveStatus.Rejected ? user.id : undefined
+        };
+      }
+      return leave;
+    });
+    
+    setLeaveApplications(updatedLeaves);
+    
+    // Update leave balance if approved or rejected
+    if (newStatus === LeaveStatus.Approved || newStatus === LeaveStatus.Rejected) {
+      const leaveToUpdate = leaveApplications.find(leave => leave.id === leaveId);
+      
+      if (leaveToUpdate) {
+        const daysBetween = differenceInDays(
+          new Date(leaveToUpdate.endDate), 
+          new Date(leaveToUpdate.startDate)
+        ) + 1;
+        
+        // Only update balance if we're looking at the employee's own leaves
+        if (selectedEmployeeId === leaveToUpdate.employeeId || (!selectedEmployeeId && user.role === UserRole.Employee)) {
+          const updatedLeaveBalances = leaveBalances.map(balance => {
+            if (balance.leaveType === leaveToUpdate.leaveType) {
+              return {
+                ...balance,
+                pending: Math.max(0, balance.pending - daysBetween),
+                used: newStatus === LeaveStatus.Approved ? balance.used + daysBetween : balance.used,
+                balance: newStatus === LeaveStatus.Approved ? balance.balance - daysBetween : balance.balance
+              };
+            }
+            return balance;
+          });
+          
+          setLeaveBalances(updatedLeaveBalances);
+        }
+      }
+    }
+    
+    toast({
+      title: `Leave ${newStatus === LeaveStatus.Approved ? 'approved' : 'rejected'}`,
+      description: `The leave request has been ${newStatus === LeaveStatus.Approved ? 'approved' : 'rejected'}.`
+    });
+  };
+
+  const getEmployeeName = (employeeId: string) => {
+    const employee = mockEmployeeProfiles.find(emp => emp.employeeId === employeeId);
+    return employee ? employee.personalInfo.name : "Unknown";
+  };
+  
+  // Filter leave applications based on selected employee for admin/HR
+  const filteredLeaveApplications = user?.role !== UserRole.Employee && selectedEmployeeId 
+    ? leaveApplications.filter(leave => leave.employeeId === selectedEmployeeId) 
+    : leaveApplications;
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-[60vh]">
+        <div className="text-center">
+          <Clock className="animate-spin h-10 w-10 text-hrms-primary mx-auto mb-4" />
+          <p className="text-xl font-medium">Loading leave data...</p>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -291,160 +395,193 @@ const LeavePage = () => {
           <p className="text-gray-500">Apply for leaves and check leave balances</p>
         </div>
         
-        <Dialog open={leaveDialogOpen} onOpenChange={setLeaveDialogOpen}>
-          <DialogTrigger asChild>
-            <Button className="mt-4 md:mt-0 bg-hrms-primary hover:bg-hrms-primary/90">
-              <Plus className="mr-2 h-4 w-4" />
-              Apply for Leave
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="sm:max-w-[500px]">
-            <DialogHeader>
-              <DialogTitle>Apply for Leave</DialogTitle>
-              <DialogDescription>
-                Submit a new leave request for approval.
-              </DialogDescription>
-            </DialogHeader>
-            
-            <div className="grid gap-4 py-4">
-              <div className="space-y-2">
-                <Label htmlFor="leaveType">Leave Type</Label>
-                <Select value={leaveType} onValueChange={(value) => setLeaveType(value as LeaveCategory)}>
-                  <SelectTrigger id="leaveType">
-                    <SelectValue placeholder="Select leave type" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {leaveBalances.map((balance) => (
-                      <SelectItem 
-                        key={balance.leaveType} 
-                        value={balance.leaveType}
-                        disabled={balance.balance <= 0}
-                      >
-                        {balance.leaveType.charAt(0).toUpperCase() + balance.leaveType.slice(1)} Leave ({balance.balance} available)
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+        {/* Show Apply for Leave button for employees or when an employee is selected by admin/HR */}
+        {(user?.role === UserRole.Employee || selectedEmployeeId) && (
+          <Dialog open={leaveDialogOpen} onOpenChange={setLeaveDialogOpen}>
+            <DialogTrigger asChild>
+              <Button className="mt-4 md:mt-0 bg-hrms-primary hover:bg-hrms-primary/90">
+                <Plus className="mr-2 h-4 w-4" />
+                Apply for Leave
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="sm:max-w-[500px]">
+              <DialogHeader>
+                <DialogTitle>Apply for Leave</DialogTitle>
+                <DialogDescription>
+                  Submit a new leave request for approval.
+                </DialogDescription>
+              </DialogHeader>
               
-              <div className="space-y-2">
-                <Label>Date Range</Label>
-                <div className={cn("grid gap-2", leaveBalances.length > 0 ? "grid-cols-2" : "grid-cols-1")}>
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <Button
-                        id="start-date"
-                        variant={"outline"}
-                        className={cn(
-                          "w-full justify-start text-left font-normal",
-                          !dateRange.from && "text-muted-foreground"
-                        )}
-                      >
-                        <CalendarIcon className="mr-2 h-4 w-4" />
-                        {dateRange.from ? (
-                          format(dateRange.from, "PPP")
-                        ) : (
-                          <span>Start date</span>
-                        )}
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0" align="start">
-                      <Calendar
-                        mode="single"
-                        selected={dateRange.from}
-                        onSelect={(date) => 
-                          setDateRange({ 
-                            from: date, 
-                            to: dateRange.to && date && date > dateRange.to ? date : dateRange.to 
-                          })
-                        }
-                        disabled={(date) => 
-                          date < new Date(new Date().setHours(0, 0, 0, 0))
-                        }
-                        initialFocus
-                        className={cn("p-3 pointer-events-auto")}
-                      />
-                    </PopoverContent>
-                  </Popover>
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <Button
-                        id="end-date"
-                        variant={"outline"}
-                        className={cn(
-                          "w-full justify-start text-left font-normal",
-                          !dateRange.to && "text-muted-foreground"
-                        )}
-                      >
-                        <CalendarIcon className="mr-2 h-4 w-4" />
-                        {dateRange.to ? (
-                          format(dateRange.to, "PPP")
-                        ) : (
-                          <span>End date</span>
-                        )}
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0" align="start">
-                      <Calendar
-                        mode="single"
-                        selected={dateRange.to}
-                        onSelect={(date) => 
-                          setDateRange({ 
-                            from: dateRange.from, 
-                            to: date 
-                          })
-                        }
-                        disabled={(date) => 
-                          !dateRange.from || 
-                          date < dateRange.from || 
-                          date < new Date(new Date().setHours(0, 0, 0, 0))
-                        }
-                        initialFocus
-                        className={cn("p-3 pointer-events-auto")}
-                      />
-                    </PopoverContent>
-                  </Popover>
+              <div className="grid gap-4 py-4">
+                <div className="space-y-2">
+                  <Label htmlFor="leaveType">Leave Type</Label>
+                  <Select value={leaveType} onValueChange={(value) => setLeaveType(value as LeaveCategory)}>
+                    <SelectTrigger id="leaveType">
+                      <SelectValue placeholder="Select leave type" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {leaveBalances.map((balance) => (
+                        <SelectItem 
+                          key={balance.leaveType} 
+                          value={balance.leaveType}
+                          disabled={balance.balance <= 0}
+                        >
+                          {balance.leaveType.charAt(0).toUpperCase() + balance.leaveType.slice(1)} Leave ({balance.balance} available)
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
-                {dateRange.from && dateRange.to && (
-                  <p className="text-sm text-muted-foreground">
-                    {applicableDays} working day{applicableDays !== 1 ? 's' : ''}
-                  </p>
-                )}
+                
+                <div className="space-y-2">
+                  <Label>Date Range</Label>
+                  <div className={cn("grid gap-2", leaveBalances.length > 0 ? "grid-cols-2" : "grid-cols-1")}>
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <Button
+                          id="start-date"
+                          variant={"outline"}
+                          className={cn(
+                            "w-full justify-start text-left font-normal",
+                            !dateRange.from && "text-muted-foreground"
+                          )}
+                        >
+                          <CalendarIcon className="mr-2 h-4 w-4" />
+                          {dateRange.from ? (
+                            format(dateRange.from, "PPP")
+                          ) : (
+                            <span>Start date</span>
+                          )}
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-auto p-0" align="start">
+                        <Calendar
+                          mode="single"
+                          selected={dateRange.from}
+                          onSelect={(date) => 
+                            setDateRange({ 
+                              from: date, 
+                              to: dateRange.to && date && date > dateRange.to ? date : dateRange.to 
+                            })
+                          }
+                          disabled={(date) => 
+                            date < new Date(new Date().setHours(0, 0, 0, 0))
+                          }
+                          initialFocus
+                          className={cn("p-3 pointer-events-auto")}
+                        />
+                      </PopoverContent>
+                    </Popover>
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <Button
+                          id="end-date"
+                          variant={"outline"}
+                          className={cn(
+                            "w-full justify-start text-left font-normal",
+                            !dateRange.to && "text-muted-foreground"
+                          )}
+                        >
+                          <CalendarIcon className="mr-2 h-4 w-4" />
+                          {dateRange.to ? (
+                            format(dateRange.to, "PPP")
+                          ) : (
+                            <span>End date</span>
+                          )}
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-auto p-0" align="start">
+                        <Calendar
+                          mode="single"
+                          selected={dateRange.to}
+                          onSelect={(date) => 
+                            setDateRange({ 
+                              from: dateRange.from, 
+                              to: date 
+                            })
+                          }
+                          disabled={(date) => 
+                            !dateRange.from || 
+                            date < dateRange.from || 
+                            date < new Date(new Date().setHours(0, 0, 0, 0))
+                          }
+                          initialFocus
+                          className={cn("p-3 pointer-events-auto")}
+                        />
+                      </PopoverContent>
+                    </Popover>
+                  </div>
+                  {dateRange.from && dateRange.to && (
+                    <p className="text-sm text-muted-foreground">
+                      {applicableDays} working day{applicableDays !== 1 ? 's' : ''}
+                    </p>
+                  )}
+                </div>
+                
+                <div className="space-y-2">
+                  <Label htmlFor="reason">Reason for Leave</Label>
+                  <Textarea
+                    id="reason"
+                    placeholder="Provide a reason for your leave request"
+                    value={leaveReason}
+                    onChange={(e) => setLeaveReason(e.target.value)}
+                    className="h-24"
+                  />
+                </div>
               </div>
               
-              <div className="space-y-2">
-                <Label htmlFor="reason">Reason for Leave</Label>
-                <Textarea
-                  id="reason"
-                  placeholder="Provide a reason for your leave request"
-                  value={leaveReason}
-                  onChange={(e) => setLeaveReason(e.target.value)}
-                  className="h-24"
-                />
-              </div>
-            </div>
-            
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setLeaveDialogOpen(false)}>Cancel</Button>
-              <Button onClick={handleLeaveSubmit} className="bg-hrms-primary hover:bg-hrms-primary/90">Submit Request</Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setLeaveDialogOpen(false)}>Cancel</Button>
+                <Button onClick={handleLeaveSubmit} className="bg-hrms-primary hover:bg-hrms-primary/90">Submit Request</Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        )}
       </div>
       
-      {/* Leave Balances */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-        {leaveBalances.map((balance) => (
-          <LeaveBalanceCard
-            key={balance.leaveType}
-            leaveType={balance.leaveType}
-            total={balance.total}
-            used={balance.used}
-            balance={balance.balance}
-            pending={balance.pending}
-          />
-        ))}
-      </div>
+      {/* Employee selector for admin/HR */}
+      {(user?.role === UserRole.Admin || user?.role === UserRole.HR) && (
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle>Employee Selection</CardTitle>
+            <CardDescription>Select an employee to view their leave details</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Select 
+              value={selectedEmployeeId} 
+              onValueChange={setSelectedEmployeeId}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="All Employees" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="">All Employees</SelectItem>
+                {allEmployees.map((emp) => (
+                  <SelectItem key={emp.employeeId} value={emp.employeeId}>
+                    {emp.personalInfo.name} ({emp.employeeId})
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </CardContent>
+        </Card>
+      )}
+      
+      {/* Leave Balances - only show when viewing a specific employee */}
+      {(user?.role === UserRole.Employee || selectedEmployeeId) && leaveBalances.length > 0 && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+          {leaveBalances.map((balance) => (
+            <LeaveBalanceCard
+              key={balance.leaveType}
+              leaveType={balance.leaveType}
+              total={balance.total}
+              used={balance.used}
+              balance={balance.balance}
+              pending={balance.pending}
+            />
+          ))}
+        </div>
+      )}
       
       {/* Leave Applications */}
       <Tabs defaultValue="all" className="w-full">
@@ -463,13 +600,16 @@ const LeavePage = () => {
                   {tab === "all" ? "All Leave Applications" : `${tab} Leaves`}
                 </CardTitle>
                 <CardDescription>
-                  View and manage your leave applications
+                  View and manage leave applications
                 </CardDescription>
               </CardHeader>
               <CardContent>
                 <Table>
                   <TableHeader>
                     <TableRow>
+                      {(user?.role === UserRole.Admin || user?.role === UserRole.HR) && !selectedEmployeeId && (
+                        <TableHead>Employee</TableHead>
+                      )}
                       <TableHead>Type</TableHead>
                       <TableHead>From</TableHead>
                       <TableHead>To</TableHead>
@@ -481,7 +621,7 @@ const LeavePage = () => {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {leaveApplications
+                    {filteredLeaveApplications
                       .filter(leave => 
                         tab === "all" || 
                         leave.status.toLowerCase() === tab.toLowerCase()
@@ -493,6 +633,9 @@ const LeavePage = () => {
                         
                         return (
                           <TableRow key={leave.id}>
+                            {(user?.role === UserRole.Admin || user?.role === UserRole.HR) && !selectedEmployeeId && (
+                              <TableCell>{getEmployeeName(leave.employeeId)}</TableCell>
+                            )}
                             <TableCell className="capitalize">{leave.leaveType}</TableCell>
                             <TableCell>{format(startDate, "dd MMM yyyy")}</TableCell>
                             <TableCell>{format(endDate, "dd MMM yyyy")}</TableCell>
@@ -507,7 +650,7 @@ const LeavePage = () => {
                               <StatusBadge status={leave.status} />
                             </TableCell>
                             <TableCell>
-                              {leave.status === LeaveStatus.Pending && (
+                              {leave.status === LeaveStatus.Pending && user?.role === UserRole.Employee && leave.employeeId === profile?.employeeId && (
                                 <Button 
                                   variant="outline" 
                                   className="h-8 text-destructive hover:text-destructive hover:bg-destructive/10"
@@ -516,6 +659,29 @@ const LeavePage = () => {
                                   Cancel
                                 </Button>
                               )}
+                              
+                              {/* Admin/HR actions for pending leaves */}
+                              {leave.status === LeaveStatus.Pending && (user?.role === UserRole.Admin || user?.role === UserRole.HR) && (
+                                <div className="flex space-x-2">
+                                  <Button 
+                                    variant="outline" 
+                                    size="sm"
+                                    className="text-green-600 hover:text-green-700 hover:bg-green-50"
+                                    onClick={() => handleLeaveStatusChange(leave.id, LeaveStatus.Approved)}
+                                  >
+                                    Approve
+                                  </Button>
+                                  <Button 
+                                    variant="outline" 
+                                    size="sm"
+                                    className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                                    onClick={() => handleLeaveStatusChange(leave.id, LeaveStatus.Rejected)}
+                                  >
+                                    Reject
+                                  </Button>
+                                </div>
+                              )}
+                              
                               {leave.status === LeaveStatus.Approved && (
                                 <span className="text-sm text-green-600">
                                   {leave.approvedBy ? `Approved by HR` : ''}
@@ -531,12 +697,12 @@ const LeavePage = () => {
                         );
                       })}
                     
-                    {leaveApplications.filter(leave => 
+                    {filteredLeaveApplications.filter(leave => 
                       tab === "all" || 
                       leave.status.toLowerCase() === tab.toLowerCase()
                     ).length === 0 && (
                       <TableRow>
-                        <TableCell colSpan={8} className="text-center py-4">
+                        <TableCell colSpan={(user?.role === UserRole.Admin || user?.role === UserRole.HR) && !selectedEmployeeId ? 9 : 8} className="text-center py-4">
                           No {tab === "all" ? "" : tab} leave applications found
                         </TableCell>
                       </TableRow>

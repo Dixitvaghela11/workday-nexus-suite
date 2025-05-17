@@ -2,7 +2,7 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { mockEmployeeProfiles, mockAttendance } from "@/services/mockData";
-import { EmployeeProfile, Attendance as AttendanceType, AttendanceStatus } from "@/types";
+import { EmployeeProfile, Attendance as AttendanceType, AttendanceStatus, UserRole } from "@/types";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { 
@@ -231,18 +231,27 @@ const AttendancePage = () => {
   const [calendar, setCalendar] = useState<any[]>([]);
   const [clockedIn, setClockedIn] = useState(false);
   const [clockInTime, setClockInTime] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [selectedEmployeeId, setSelectedEmployeeId] = useState<string>("");
+  const [allEmployees, setAllEmployees] = useState<EmployeeProfile[]>([]);
 
   useEffect(() => {
     if (user) {
+      setLoading(true);
+      
+      // Set all employees data for admin/HR
+      if (user.role === UserRole.Admin || user.role === UserRole.HR) {
+        setAllEmployees(mockEmployeeProfiles);
+      }
+      
       // Find employee profile
       const employeeProfile = mockEmployeeProfiles.find(emp => emp.personalInfo.email === user.email);
       
       if (employeeProfile) {
         setProfile(employeeProfile);
         
-        // Get attendance records for this employee
-        const records = mockAttendance.filter(record => record.employeeId === employeeProfile.employeeId);
-        setAttendanceRecords(records);
+        // For regular employees - only show their attendance
+        let records = mockAttendance.filter(record => record.employeeId === employeeProfile.employeeId);
         
         // Check if clocked in today
         const today = new Date().toISOString().split('T')[0];
@@ -255,6 +264,14 @@ const AttendancePage = () => {
           setClockedIn(true);
           setClockInTime(todayRecord.punchInTime.toString());
         }
+        
+        setAttendanceRecords(records);
+        setLoading(false);
+      } else if (user.role === UserRole.Admin || user.role === UserRole.HR) {
+        // For admin/HR - show all attendance records by default
+        setAttendanceRecords(mockAttendance);
+        setSelectedEmployeeId("");
+        setLoading(false);
       }
     }
   }, [user]);
@@ -266,10 +283,15 @@ const AttendancePage = () => {
     
     // Filter records for the selected month
     filterRecords();
-  }, [selectedMonth, selectedYear, statusFilter, searchDate, attendanceRecords]);
+  }, [selectedMonth, selectedYear, statusFilter, searchDate, attendanceRecords, selectedEmployeeId]);
 
   const filterRecords = () => {
     let filtered = [...attendanceRecords];
+    
+    // Filter by employee if admin/HR and employee selected
+    if ((user?.role === UserRole.Admin || user?.role === UserRole.HR) && selectedEmployeeId) {
+      filtered = filtered.filter(record => record.employeeId === selectedEmployeeId);
+    }
     
     // Filter by month and year
     filtered = filtered.filter((record) => {
@@ -399,8 +421,15 @@ const AttendancePage = () => {
     }) || null;
   };
 
-  if (!profile) {
-    return <div className="py-10 text-center">Loading attendance data...</div>;
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-[60vh]">
+        <div className="text-center">
+          <Clock className="animate-spin h-10 w-10 text-hrms-primary mx-auto mb-4" />
+          <p className="text-xl font-medium">Loading attendance data...</p>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -431,60 +460,90 @@ const AttendancePage = () => {
         </div>
       </div>
       
-      {/* Clock in/out card */}
-      <Card>
-        <CardContent className="p-6">
-          <div className="flex flex-col md:flex-row items-center justify-between">
-            <div className="flex items-center mb-4 md:mb-0">
-              <div className="h-16 w-16 rounded-full bg-hrms-primary/10 flex items-center justify-center">
-                <Clock className="h-8 w-8 text-hrms-primary" />
+      {/* Employee selector for admin/HR */}
+      {(user?.role === UserRole.Admin || user?.role === UserRole.HR) && (
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle>Employee Selection</CardTitle>
+            <CardDescription>Select an employee to view their attendance records</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Select 
+              value={selectedEmployeeId} 
+              onValueChange={setSelectedEmployeeId}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="All Employees" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="">All Employees</SelectItem>
+                {allEmployees.map((emp) => (
+                  <SelectItem key={emp.employeeId} value={emp.employeeId}>
+                    {emp.personalInfo.name} ({emp.employeeId})
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </CardContent>
+        </Card>
+      )}
+      
+      {/* Clock in/out card - only show for regular employees viewing their own data */}
+      {(!user || user.role === UserRole.Employee || selectedEmployeeId === profile?.employeeId) && (
+        <Card>
+          <CardContent className="p-6">
+            <div className="flex flex-col md:flex-row items-center justify-between">
+              <div className="flex items-center mb-4 md:mb-0">
+                <div className="h-16 w-16 rounded-full bg-hrms-primary/10 flex items-center justify-center">
+                  <Clock className="h-8 w-8 text-hrms-primary" />
+                </div>
+                <div className="ml-4">
+                  <h2 className="text-xl font-semibold">
+                    {new Date().toLocaleDateString(undefined, { 
+                      weekday: 'long', 
+                      day: 'numeric', 
+                      month: 'long',
+                      year: 'numeric'
+                    })}
+                  </h2>
+                  <p className="text-gray-500">
+                    {new Date().toLocaleTimeString(undefined, { 
+                      hour: '2-digit', 
+                      minute: '2-digit',
+                      second: '2-digit'
+                    })}
+                  </p>
+                </div>
               </div>
-              <div className="ml-4">
-                <h2 className="text-xl font-semibold">
-                  {new Date().toLocaleDateString(undefined, { 
-                    weekday: 'long', 
-                    day: 'numeric', 
-                    month: 'long',
-                    year: 'numeric'
-                  })}
-                </h2>
-                <p className="text-gray-500">
-                  {new Date().toLocaleTimeString(undefined, { 
-                    hour: '2-digit', 
-                    minute: '2-digit',
-                    second: '2-digit'
-                  })}
-                </p>
+              
+              <div className="flex space-x-3">
+                <Button
+                  onClick={handleClockIn}
+                  disabled={clockedIn}
+                  className="bg-green-600 hover:bg-green-700"
+                >
+                  Clock In
+                </Button>
+                <Button
+                  onClick={handleClockOut}
+                  disabled={!clockedIn}
+                  className="bg-amber-600 hover:bg-amber-700"
+                >
+                  Clock Out
+                </Button>
               </div>
             </div>
             
-            <div className="flex space-x-3">
-              <Button
-                onClick={handleClockIn}
-                disabled={clockedIn}
-                className="bg-green-600 hover:bg-green-700"
-              >
-                Clock In
-              </Button>
-              <Button
-                onClick={handleClockOut}
-                disabled={!clockedIn}
-                className="bg-amber-600 hover:bg-amber-700"
-              >
-                Clock Out
-              </Button>
-            </div>
-          </div>
-          
-          {clockedIn && clockInTime && (
-            <div className="mt-4 p-3 bg-green-50 text-green-700 rounded-md">
-              <p className="text-sm">
-                You clocked in at {formatTime(clockInTime)}. Don't forget to clock out at the end of your workday.
-              </p>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+            {clockedIn && clockInTime && (
+              <div className="mt-4 p-3 bg-green-50 text-green-700 rounded-md">
+                <p className="text-sm">
+                  You clocked in at {formatTime(clockInTime)}. Don't forget to clock out at the end of your workday.
+                </p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
       
       {/* Filters */}
       <div className="flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-2">
@@ -567,6 +626,9 @@ const AttendancePage = () => {
             <Table>
               <TableHeader>
                 <TableRow>
+                  {(user?.role === UserRole.Admin || user?.role === UserRole.HR) && !selectedEmployeeId && (
+                    <TableHead>Employee</TableHead>
+                  )}
                   <TableHead>Date</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Clock In</TableHead>
@@ -577,31 +639,40 @@ const AttendancePage = () => {
               </TableHeader>
               <TableBody>
                 {filteredRecords.length > 0 ? (
-                  filteredRecords.map((record) => (
-                    <TableRow key={record.id}>
-                      <TableCell>
-                        {new Date(typeof record.date === 'string' ? record.date : record.date.toISOString()).toLocaleDateString()}
-                      </TableCell>
-                      <TableCell>
-                        <StatusBadge status={record.status} />
-                      </TableCell>
-                      <TableCell>
-                        {record.punchInTime ? formatTime(record.punchInTime.toString()) : "N/A"}
-                      </TableCell>
-                      <TableCell>
-                        {record.punchOutTime ? formatTime(record.punchOutTime.toString()) : "N/A"}
-                      </TableCell>
-                      <TableCell>
-                        {record.workHours !== undefined ? `${record.workHours} hrs` : "N/A"}
-                      </TableCell>
-                      <TableCell>
-                        {record.comments || "—"}
-                      </TableCell>
-                    </TableRow>
-                  ))
+                  filteredRecords.map((record) => {
+                    const employeeName = user?.role !== UserRole.Employee 
+                      ? mockEmployeeProfiles.find(emp => emp.employeeId === record.employeeId)?.personalInfo.name || "Unknown"
+                      : "";
+                      
+                    return (
+                      <TableRow key={record.id}>
+                        {(user?.role === UserRole.Admin || user?.role === UserRole.HR) && !selectedEmployeeId && (
+                          <TableCell>{employeeName}</TableCell>
+                        )}
+                        <TableCell>
+                          {new Date(typeof record.date === 'string' ? record.date : record.date.toISOString()).toLocaleDateString()}
+                        </TableCell>
+                        <TableCell>
+                          <StatusBadge status={record.status} />
+                        </TableCell>
+                        <TableCell>
+                          {record.punchInTime ? formatTime(record.punchInTime.toString()) : "N/A"}
+                        </TableCell>
+                        <TableCell>
+                          {record.punchOutTime ? formatTime(record.punchOutTime.toString()) : "N/A"}
+                        </TableCell>
+                        <TableCell>
+                          {record.workHours !== undefined ? `${record.workHours} hrs` : "N/A"}
+                        </TableCell>
+                        <TableCell>
+                          {record.comments || "—"}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })
                 ) : (
                   <TableRow>
-                    <TableCell colSpan={6} className="text-center py-4">
+                    <TableCell colSpan={(user?.role === UserRole.Admin || user?.role === UserRole.HR) && !selectedEmployeeId ? 7 : 6} className="text-center py-4">
                       No attendance records found for the selected filters
                     </TableCell>
                   </TableRow>
